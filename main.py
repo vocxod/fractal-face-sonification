@@ -6,6 +6,8 @@ import time
 # Импортируем наш новый шаг обработки лица
 from vision.face_processor import process_and_center_face
 
+from core import get_fractal_path
+
 # --- НАСТРОЙКА СТРАНИЦЫ ---
 st.set_page_config(
     page_title="Фрактальный аудио-портрет",
@@ -99,18 +101,26 @@ if uploaded_file is not None:
         stop_play = st.button("❚❚ ПАУЗА", use_container_width=True)
         
     if start_play:
-        st.success(f"Запущен симулятор обхода по траектории: **{curve_type}**")
+        st.success(f"Движок активирован. Режим: **{curve_type}**")
         
-        # Заглушка под будущий цикл обхода и real-time отрисовку
+        # Вызываем наш ДРАКОН-переключатель. На лету получаем траекторию!
+        with st.spinner("Математический движок рассчитывает фрактальную траекторию..."):
+            path = get_fractal_path(curve_type, size=256)
+        
+        st.info(f"Траектория успешно сгенерирована! Длина пути: **{len(path)}** точек/пикселей.")
+        
         status_box = st.empty()
         progress_bar = st.progress(0)
         
-        # Имитируем быстрый проход макро-зон (например, 16 шагов L2 уровня)
-        for step in range(1, 17):
-            status_box.markdown(f"**Шаг {step}/16:** Сканируем сектор. Режим: `{sound_preset}`. "
-                                f"Бас: {'🎵 играет' if 120 > bass_threshold else '░ пауза'}")
-            progress_bar.progress(step / 16)
-            time.sleep(0.2)
+        # Симулируем первые 20 шагов реального фрактального пути
+        for step in range(1, 21):
+            x_coord, y_coord = path[step - 1]
+            status_box.markdown(
+                f"**Текущий шаг {step}:** Координаты звукового луча `X: {x_coord}`, `Y: {y_coord}`. "
+                f"Звучит слой: `{sound_preset}`."
+            )
+            progress_bar.progress(step / 20)
+            time.sleep(0.15)
             
         st.balloons()
 
