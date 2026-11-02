@@ -57,7 +57,8 @@ if uploaded_file is not None:
     
     with col_orig:
         st.subheader("🖼️ Оригинал")
-        st.image(image_rgb, use_container_width=True)
+        # st.image(image_rgb, use_container_width=True)
+        st.image(image_rgb, width='stretch')
         
     # --- КАРТИРОВАНИЕ И ПОДГОТОВКА МАТРИЦЫ ---
     # Переводим в градации серого
