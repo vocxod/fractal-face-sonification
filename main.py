@@ -72,9 +72,19 @@ if uploaded_file is not None:
     resized_gray, face_found = process_and_center_face(image, target_size=square_size)
 
     
+    # with col_fractal:
+    #     st.subheader("🏁 Фрактальная матрица (256x256)")
+    #     # Отображаем ч/б квадрат, готовый к сканированию
+    #     st.image(resized_gray, width=square_size, channels="GRAY")
+
     with col_fractal:
-        st.subheader("🏁 Фрактальная матрица (256x256)")
-        # Отображаем ч/б квадрат, готовый к сканированию
+        if face_found:
+            st.subheader("🎯 Центрированное лицо (256x256)")
+        else:
+            st.subheader("🏁 Фрактальная матрица (Лицо не найдено)")
+            st.warning("Алгоритм не распознал лицо, взят центр кадра.")
+            
+        # Отображаем подготовленный для сканирования квадрат
         st.image(resized_gray, width=square_size, channels="GRAY")
         
     # --- ПАНЕЛЬ ВОСПРОИЗВЕДЕНИЯ ---
