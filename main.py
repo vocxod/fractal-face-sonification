@@ -179,9 +179,20 @@ if uploaded_file is not None:
             }
             
             output_midi_file = "face_music.mid"
+            output_wav_file = "face_music.wav"
+
             # Передаем новые параметры оркестровки и лада
             generate_face_midi(face_layers, user_instruments, selected_scale, current_thresholds, output_midi_file)
+
+            # Генерируем звуковую волну для встроенного плеера!
+            from audio.midi_generator import generate_face_wav
+            generate_face_wav(face_layers, user_instruments, selected_scale, current_thresholds, output_wav_file)
             
+        # ВСТРАИВАЕМ HTML5 АУДИОПЛЕЕР ПРЯМО НА ПАНЕЛЬ
+        st.write("### 🔊 Встроенный плеер аудио-паспорта")
+        with open(output_wav_file, "rb") as audio_file:
+            st.audio(audio_file.read(), format="audio/wav")            
+
         # Отрисовка анимации (берем холст из сессии)
         visual_container = st.empty()
         status_text = st.empty()
