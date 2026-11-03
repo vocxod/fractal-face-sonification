@@ -11,6 +11,8 @@ from audio.midi_generator import generate_face_midi
 
 # Библиотека для интерактивного JS-кроппинга на Canvas (под капотом Cropper.js)
 from streamlit_cropper import st_cropper
+# Подтягиваем списки инструментов из пресетов
+from audio.presets import AVAILABLE_INSTRUMENTS, SCALES
 
 # --- НАСТРОЙКА СТРАНИЦЫ ---
 st.set_page_config(
@@ -43,10 +45,33 @@ curve_type = st.sidebar.selectbox(
     ["Развертка Мортона (Z-кривая)", "Кривая Гильберта (Плавное легато)"]
 )
 
+# deprecated
 # 3. Выбор музыкального пака
 sound_preset = st.sidebar.selectbox(
     "3. Звуковая палитра (Пресет)",
     ["Космический Эмбиент", "Классика (Академический)", "Киберпанк (Электроника)", "Этно (Медитативный)"]
+)
+
+# 3. Выбор музыкального лада (Гаммы)
+selected_scale = st.sidebar.selectbox(
+    "3. Музыкальный лад (Гамма)",
+    list(SCALES.keys())
+)
+
+# 3б. Свободный выбор инструментов по регистрам
+st.sidebar.subheader("🎺 Конструктор фрактального оркестра")
+
+instrument_large = st.sidebar.selectbox(
+    "Инструмент для БАСА (Крупный слой)",
+    list(AVAILABLE_INSTRUMENTS["large"].keys())
+)
+instrument_medium = st.sidebar.selectbox(
+    "Инструмент для МИД (Средний слой)",
+    list(AVAILABLE_INSTRUMENTS["medium"].keys())
+)
+instrument_small = st.sidebar.selectbox(
+    "Инструмент для ТОП (Мелкие детали)",
+    list(AVAILABLE_INSTRUMENTS["small"].keys())
 )
 
 # 4. Настройка порогов яркости (Паузы)
@@ -134,20 +159,28 @@ if uploaded_file is not None:
         
     # Проверяем матрицу из ПАМЯТИ СЕССИИ (теперь она никогда не будет None)
     if start_play and st.session_state.resized_gray is not None:
-        st.success(f"🔥 Движок со-творчества запущен! Режим: **{curve_type}**")
+        st.success(f"🔥 Фрактальный оркестр запущен! Лад: **{selected_scale}**")
         
         with st.spinner("1. Математическое квадродерево строит слои изображения..."):
-            # Передаем матрицу из памяти сессии
             face_layers = process_face_to_layers(st.session_state.resized_gray, curve_type)
             
-        with st.spinner("2. Аудио-сервер собирает полифоническую партитуру..."):
+        with st.spinner("2. Сборка индивидуальной партитуры со-творца..."):
             current_thresholds = {
                 'bass': bass_threshold,
                 'piano': piano_threshold,
                 'flute': flute_threshold
             }
+            
+            # Собираем словарь ID выбранных инструментов для передачи в генератор
+            user_instruments = {
+                'large': AVAILABLE_INSTRUMENTS["large"][instrument_large],
+                'medium': AVAILABLE_INSTRUMENTS["medium"][instrument_medium],
+                'small': AVAILABLE_INSTRUMENTS["small"][instrument_small]
+            }
+            
             output_midi_file = "face_music.mid"
-            generate_face_midi(face_layers, sound_preset, current_thresholds, output_midi_file)
+            # Передаем новые параметры оркестровки и лада
+            generate_face_midi(face_layers, user_instruments, selected_scale, current_thresholds, output_midi_file)
             
         # Отрисовка анимации (берем холст из сессии)
         visual_container = st.empty()
