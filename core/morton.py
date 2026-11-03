@@ -1,18 +1,17 @@
-from typing import List, Tuple
+from typing import List
+from core.quadtree import QuadtreeNode, get_nodes_at_level
 
-def generate_morton_path(size: int) -> List[Tuple[int, int]]:
+def sort_nodes_by_morton(nodes: List[QuadtreeNode]) -> List[QuadtreeNode]:
     """
-    Генерирует траекторию обхода матрицы по Z-кривой Мортона.
-    Для старта возвращает базовую сетку, разбитую по квадрантам.
+    Сортирует узлы квадродерева по Z-кривой (коду Мортона).
+    Код Мортона получается путем перемежения битов координат X и Y.
     """
-    path = []
-    
-    # Временный математический прототип: обход макро-пикселей 
-    # для демонстрации работы ДРАКОН-переключателя в интерфейсе
-    for y in range(size):
-        for x in range(size):
-            # Будущая логика будет использовать битовое перемежение (Bit Interleaving)
-            # или рекурсивное деление квадродерева на 4 потомка
-            path.append((x, y))
-            
-    return path
+    def sfc_index(node: QuadtreeNode) -> int:
+        # Перемежение битов координат X и Y
+        x, y = node.x, node.y
+        index = 0
+        for i in range(16): # Поддержка матриц до 65536x65536
+            index |= ((x & (1 << i)) << i) | ((y & (1 << i)) << (i + 1))
+        return index
+
+    return sorted(nodes, key=sfc_index)

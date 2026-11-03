@@ -1,0 +1,176 @@
+С возвращением к компьютеру! Сегодня мы закладываем самое сердце нашего проекта — иерархическое квадродерево (Quadtree).
+Именно эта структура превратит плоские пиксели лица в многослойную полифонию. Напомню нашу математическую логику:
+• Корень дерева (Уровень 0): Вся картина (256x256).
+• Уровень 2 (Макро-четверти, сетка 4x4): Басовый слой. Задает пульс и длинные такты.
+• Уровень 3 (Средние потомки, сетка 8x8): Пианино. Задает ритмический рисунок.
+• Уровень 4 (Микро-детали, сетка 16x16): Флейта. Играет быстрые 16-е ноты.
+Порядок, в котором мы обходим эти узлы на каждом уровне, определяется выбранной кривой: Z-разверткой (Мортон) или Гильбертом.
+
+🧱 Реализация квадродерева: Модуль core/quadtree.py
+
+Создадим новый файл core/quadtree.py, который будет отвечать за фрактальное разбиение нашей Ч/Б матрицы лица на слои и вычисление средней яркости для каждого узла.
+Запишите в core/quadtree.py следующий код:
+python
+import numpy as np
+from typing import List, Dict, Any, Tuple
+
+class QuadtreeNode:
+    def __init__(self, x: int, y: int, size: int, level: int):
+        self.x = x            # Координата X верхнего левого угла на матрице
+        self.y = y            # Координата Y верхнего левого угла на матрице
+        self.size = size      # Размер стороны квадрата (в пикселях)
+        self.level = level    # Уровень вложенности (0 - корень, 1 - 2x2, 2 - 4x4 и т.д.)
+        self.brightness = 0.0 # Средняя яркость этого квадранта (0-255)
+        self.children: List['QuadtreeNode'] = [] # 4 потомка
+
+    def is_leaf(self) -> bool:
+        return len(self.children) == 0
+
+def build_quadtree(matrix: np.ndarray, x: int, y: int, size: int, level: int, max_level: int) -> QuadtreeNode:
+    """
+    Рекурсивно строит полное квадродерево до уровня max_level.
+    Рассчитывает среднюю яркость для каждого узла.
+    """
+    node = QuadtreeNode(x, y, size, level)
+    
+    # Считаем среднюю яркость в этой зоне
+    roi = matrix[y:y+size, x:x+size]
+    node.brightness = float(np.mean(roi)) if roi.size > 0 else 0.0
+    
+    # Базовый случай: достигли максимальной глубины сканирования
+    if level >= max_level or size <= 1:
+        return node
+        
+    half = size // 2
+    
+    # Создаем 4 потомков (пока в стандартном порядке координат)
+    # 0: Верхний левый, 1: Верхний правый, 2: Нижний левый, 3: Нижний правый
+    node.children.append(build_quadtree(matrix, x, y, half, level + 1, max_level))
+    node.children.append(build_quadtree(matrix, x + half, y, half, level + 1, max_level))
+    node.children.append(build_quadtree(matrix, x, y + half, half, level + 1, max_level))
+    node.children.append(build_quadtree(matrix, x + half, y + half, half, level + 1, max_level))
+    
+    return node
+
+def get_nodes_at_level(node: QuadtreeNode, target_level: int) -> List[QuadtreeNode]:
+    """ Возвращает все узлы дерева, находящиеся на строго заданном уровне """
+    if node.level == target_level:
+        return [node]
+    
+    nodes = []
+    for child in node.children:
+        nodes.extend(get_nodes_at_level(child, target_level))
+    return nodes
+Используйте код с осторожностью.
+
+📐 Сортировка по кривым: Обновление core/morton.py и core/hilbert.py
+
+Теперь нам нужно сделать так, чтобы узлы квадродерева сортировались строго по пространственным кривым.
+
+1. Z-развертка Мортона (core/morton.py)
+
+Для Мортона порядок обхода детей на любом уровне всегда одинаков: Z-образный (ВЛ -> ВП -> НЛ -> НП). В двоичном виде это эквивалентно перемежению битов (Bit Interleaving).
+Перепишем core/morton.py:
+python
+from typing import List
+from core.quadtree import QuadtreeNode, get_nodes_at_level
+
+def sort_nodes_by_morton(nodes: List[QuadtreeNode]) -> List[QuadtreeNode]:
+    """
+    Сортирует узлы квадродерева по Z-кривой (коду Мортона).
+    Код Мортона получается путем перемежения битов координат X и Y.
+    """
+    def sfc_index(node: QuadtreeNode) -> int:
+        # Перемежение битов координат X и Y
+        x, y = node.x, node.y
+        index = 0
+        for i in range(16): # Поддержка матриц до 65536x65536
+            index |= ((x & (1 << i)) << i) | ((y & (1 << i)) << (i + 1))
+        return index
+
+    return sorted(nodes, key=sfc_index)
+Используйте код с осторожностью.
+
+2. Кривая Гильберта (core/hilbert.py)
+
+Кривая Гильберта сложнее: при переходе вглубь П-образная форма разворачивается и меняет ориентацию в пространстве, чтобы обход оставался строго непрерывным.
+Перепишем core/hilbert.py:
+python
+from typing import List
+from core.quadtree import QuadtreeNode
+
+def sort_nodes_by_hilbert(nodes: List[QuadtreeNode], size: int) -> List[QuadtreeNode]:
+    """
+    Сортирует узлы по непрерывной кривой Гильберта.
+    """
+    def xy2d(n: int, x: int, y: int) -> int:
+        """ Перевод координат X, Y в расстояние d вдоль кривой Гильберта """
+        d = 0
+        s = n // 2
+        while s > 0:
+            rx = (x & s) > 0
+            ry = (y & s) > 0
+            d += s * s * ((3 * rx) ^ ry)
+            # Вращаем квадранты
+            if ry == 0:
+                if rx == 1:
+                    x = s - 1 - x
+                    y = s - 1 - y
+                x, y = y, x
+            s //= 2
+        return d
+
+    return sorted(nodes, key=lambda node: xy2d(size, node.x, node.y))
+Используйте код с осторожностью.
+
+🔄 Интеграция и ДРАКОН-выбор в core/__init__.py
+
+Обновим наш диспетчер в core/__init__.py, чтобы он управлял не абстрактными точками, а слоями реального квадродерева лица:
+python
+import numpy as np
+from typing import Dict, List
+from core.quadtree import build_quadtree, get_nodes_at_level, QuadtreeNode
+from core.morton import sort_nodes_by_morton
+from core.hilbert import sort_nodes_by_hilbert
+
+def process_face_to_layers(matrix: np.ndarray, curve_name: str) -> Dict[str, List[QuadtreeNode]]:
+    """
+    Строит квадродерево по матрице лица и сортирует узлы уровней 
+    согласно выбранной фрактальной траектории.
+    """
+    size = matrix.shape[0]
+    # Наш оркестр работает на уровнях 2, 3 и 4
+    root = build_quadtree(matrix, x=0, y=0, size=size, level=0, max_level=4)
+    
+    # Извлекаем сырые слои
+    layers = {
+        'large':  get_nodes_at_level(root, target_level=2), # БАС (Сетка 4x4 = 16 нот)
+        'medium': get_nodes_at_level(root, target_level=3), # МИД (Сетка 8x8 = 64 ноты)
+        'small':  get_nodes_at_level(root, target_level=4)  # ТОП (Сетка 16x16 = 256 нот)
+    }
+    
+    # Сортируем каждый слой согласно выбранной ДРАКОН-стратегии
+    match curve_name:
+        case "Развертка Мортона (Z-кривая)":
+            for key in layers:
+                layers[key] = sort_nodes_by_morton(layers[key])
+        case "Кривая Гильберта (Плавное легато)":
+            for key in layers:
+                layers[key] = sort_nodes_by_hilbert(layers[key], size)
+        case _:
+            # Временный фолбек для Пеано
+            pass
+            
+    return layers
+Используйте код с осторожностью.
+
+💾 Заливаем изменения в Git
+
+Архитектура фрактального анализа готова. Теперь наши слои — это не плоские строки пикселей, а иерархические блоки со средней яркостью. Выполните коммит:
+bash
+git add core/quadtree.py core/morton.py core/hilbert.py core/__init__.py
+git commit -m "Feature: Реализована структура квадродерева и фрактальная сортировка слоев по Мортону и Гильберту"
+Используйте код с осторожностью.
+Наше фрактальное ядро теперь полностью готово отдавать структурированные музыкальные слои. Чтобы запустить аудио-движок, нам нужно решить:
+1. Вы хотите, чтобы мы сразу вывели визуализацию квадрантов на интерактивную панель Streamlit (чтобы видеть, как лицо бьется на блоки 4x4, 8x8 и как по ним бегает луч)?
+2. Или мы сразу пишем MIDI-генератор в audio/midi_generator.py, чтобы можно было скачать и послушать первый полифонический файл?

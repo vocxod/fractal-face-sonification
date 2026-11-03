@@ -1,18 +1,25 @@
-from typing import List, Tuple
+from typing import List
+from core.quadtree import QuadtreeNode
 
-def generate_hilbert_path(size: int) -> List[Tuple[int, int]]:
+def sort_nodes_by_hilbert(nodes: List[QuadtreeNode], size: int) -> List[QuadtreeNode]:
     """
-    Генерирует непрерывную траекторию кривой Гильберта (без скачков).
+    Сортирует узлы по непрерывной кривой Гильберта.
     """
-    path = []
-    # Заглушка: в полноценной версии здесь будет рекурсивный обход 
-    # с поворотом U-образных элементов на 90 градусов
-    for x in range(size):
-        if x % 2 == 0:
-            for y in range(size):
-                path.append((x, y))
-        else:
-            for y in range(size - 1, -1, -1):
-                path.append((x, y))
-    return path
+    def xy2d(n: int, x: int, y: int) -> int:
+        """ Перевод координат X, Y в расстояние d вдоль кривой Гильберта """
+        d = 0
+        s = n // 2
+        while s > 0:
+            rx = (x & s) > 0
+            ry = (y & s) > 0
+            d += s * s * ((3 * rx) ^ ry)
+            # Вращаем квадранты
+            if ry == 0:
+                if rx == 1:
+                    x = s - 1 - x
+                    y = s - 1 - y
+                x, y = y, x
+            s //= 2
+        return d
 
+    return sorted(nodes, key=lambda node: xy2d(size, node.x, node.y))

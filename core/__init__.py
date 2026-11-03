@@ -1,26 +1,35 @@
-from typing import List, Tuple
-# Импортируем будущие функции генерации траекторий
-from core.morton import generate_morton_path
-from core.hilbert import generate_hilbert_path
-from core.peano import generate_peano_path
+import numpy as np
+from typing import Dict, List
+from core.quadtree import build_quadtree, get_nodes_at_level, QuadtreeNode
+from core.morton import sort_nodes_by_morton
+from core.hilbert import sort_nodes_by_hilbert
 
-def get_fractal_path(curve_name: str, size: int) -> List[Tuple[int, int]]:
+def process_face_to_layers(matrix: np.ndarray, curve_name: str) -> Dict[str, List[QuadtreeNode]]:
     """
-    ДРАКОН-переключатель траектории.
-    Принимает название кривой из интерфейса и размер квадратной матрицы.
-    Возвращает упорядоченный список координат (x, y) для обхода.
+    Строит квадродерево по матрице лица и сортирует узлы уровней 
+    согласно выбранной фрактальной траектории.
     """
+    size = matrix.shape[0]
+    # Наш оркестр работает на уровнях 2, 3 и 4
+    root = build_quadtree(matrix, x=0, y=0, size=size, level=0, max_level=4)
+    
+    # Извлекаем сырые слои
+    layers = {
+        'large':  get_nodes_at_level(root, target_level=2), # БАС (Сетка 4x4 = 16 нот)
+        'medium': get_nodes_at_level(root, target_level=3), # МИД (Сетка 8x8 = 64 ноты)
+        'small':  get_nodes_at_level(root, target_level=4)  # ТОП (Сетка 16x16 = 256 нот)
+    }
+    
+    # Сортируем каждый слой согласно выбранной ДРАКОН-стратегии
     match curve_name:
         case "Развертка Мортона (Z-кривая)":
-            return generate_morton_path(size)
-            
+            for key in layers:
+                layers[key] = sort_nodes_by_morton(layers[key])
         case "Кривая Гильберта (Плавное легато)":
-            return generate_hilbert_path(size)
-            
-        case "Кривая Пеано (Полиритмия 3x3)":
-            return generate_peano_path(size)
-            
+            for key in layers:
+                layers[key] = sort_nodes_by_hilbert(layers[key], size)
         case _:
-            # Безопасный фолбек на случай непредвиденного значения
-            raise ValueError(f"Неизвестный тип фрактальной кривой: {curve_name}")
-
+            # Временный фолбек для Пеано
+            pass
+            
+    return layers
