@@ -174,3 +174,311 @@ git commit -m "Feature: Реализована структура квадрод
 Наше фрактальное ядро теперь полностью готово отдавать структурированные музыкальные слои. Чтобы запустить аудио-движок, нам нужно решить:
 1. Вы хотите, чтобы мы сразу вывели визуализацию квадрантов на интерактивную панель Streamlit (чтобы видеть, как лицо бьется на блоки 4x4, 8x8 и как по ним бегает луч)?
 2. Или мы сразу пишем MIDI-генератор в audio/midi_generator.py, чтобы можно было скачать и послушать первый полифонический файл?
+
+Отличный выбор! Музыка — главный критерий истины в нашем проекте. Реализовав генерацию полифонического MIDI-файла прямо сейчас, мы сможем услышать, как звучит лицо на нашей иерархической сетке квадродерева.
+Напомню наши правила синхронизации уровней:
+• Бас (large, Уровень 2): задает сетку макро-тактов. Каждая басовая нота имеет максимальную длительность.
+• Пианино (medium, Уровень 3): играет в 4 раза чаще (внутри одного басового блока звучит до 4 нот средних частот).
+• Флейта (small, Уровень 4): играет в 16 раз чаще (самые быстрые, искрящиеся 16-е ноты).
+Если средняя яркость узла на каком-то уровне падает ниже заданного в интерфейсе порога, этот инструмент на данном шаге берет паузу.
+
+🛠️ Шаг 1. Реализуем музыкальные пресеты (audio/presets.py)
+
+Создадим файл настроек инструментов и музыкальных ладов, чтобы музыка всегда оставалась гармоничной (использовав квантование по минорной пентатонике):
+python
+# audio/presets.py
+
+# MIDI номера инструментов
+INSTRUMENTS = {
+    "Космический Эмбиент": {"large": 89, "medium": 81, "small": 98},     # Pad (Warm), Lead (Sawtooth), Crystal
+    "Классика (Академический)": {"large": 42, "medium": 0, "small": 73},  # Cello, Acoustic Grand Piano, Flute
+    "Киберпанк (Электроника)": {"large": 38, "medium": 80, "small": 84}, # Synth Bass 2, Lead (Square), Lead (Charang)
+    "Этно (Медитативный)": {"large": 24, "medium": 25, "small": 78}      # Acoustic Guitar (nylon), (steel), Whistle
+}
+
+# Массив нот минорной пентатоники (ля-минор) для квантования частот, чтобы избежать какофонии
+PENTATONIC_SCALE = [36, 39, 41, 43, 46, 48, 51, 53, 55, 58, 60, 63, 65, 67, 70, 72, 75, 77, 79, 82, 84, 87, 89, 91, 94, 96]
+
+def quantize_to_scale(raw_note: int, min_note: int, max_note: int) -> int:
+    """ Находит ближайшую к расчетной ноту из разрешенного гармоничного лада """
+    allowed_notes = [n for n in PENTATONIC_SCALE if min_note <= n <= max_note]
+    if not allowed_notes:
+        return min_note
+    return min(allowed_notes, key=lambda x: abs(x - raw_note))
+Используйте код с осторожностью.
+
+🛠️ Шаг 2. Реализуем иерархический MIDI-генератор (audio/midi_generator.py)
+
+Нам необходимо сопоставить временную шкалу. Так как дерево полное, на 1 узел Баса приходится 4 узла Пианино и 16 узлов Флейты. Мы будем итерироваться по самому глубокому и частому слою (Флейта, 256 шагов), а для Баса и Пианино брать соответствующего «родителя» на этом временном отрезке.
+Запишите в audio/midi_generator.py следующий код:
+python
+# audio/midi_generator.py
+import mido
+from mido import Message, MidiFile, MidiTrack
+from audio.presets import INSTRUMENTS, quantize_to_scale
+
+def generate_face_midi(layers: dict, preset_name: str, thresholds: dict, output_path: str = "face_music.mid"):
+    """
+    Генератор полифонического MIDI на основе слоев квадродерева.
+    Синхронизирует макро- и микро-доли во времени с учетом порогов пауз.
+    """
+    mid = MidiFile()
+    
+    # 3 независимых трека для полифонии
+    bass_track = MidiTrack()
+    piano_track = MidiTrack()
+    flute_track = MidiTrack()
+    mid.tracks.extend([bass_track, piano_track, flute_track])
+    
+    # Назначаем инструменты из выбранного пресета
+    patch_info = INSTRUMENTS.get(preset_name, INSTRUMENTS["Космический Эмбиент"])
+    bass_track.append(Message('program_change', program=patch_info['large'], channel=0, time=0))
+    piano_track.append(Message('program_change', program=patch_info['medium'], channel=1, time=0))
+    flute_track.append(Message('program_change', program=patch_info['small'], channel=2, time=0))
+    
+    # Музыкальные кванты времени (в MIDI тиках)
+    tick_16th = 120  # Длительность самой короткой ноты (Флейта)
+    
+    # Накопители тишины (пауз) для дельта-времени каждого трека
+    accumulators = {0: 0, 1: 0, 2: 0}
+    
+    # В квадродереве: 16 узлов бас, 64 узла пианино, 256 узлов флейты
+    num_steps = len(layers['small']) # Всего 256 микро-шагов
+    
+    for step in range(num_steps):
+        # Вычисляем индексы родительских узлов для текущего микро-шага
+        bass_idx = step // 16
+        piano_idx = step // 4
+        flute_idx = step
+        
+        # --- СЛОЙ 3: ФЛЕЙТА (Каждый шаг) ---
+        f_node = layers['small'][flute_idx]
+        if f_node.brightness >= thresholds['flute']:
+            vel = max(20, min(int((f_node.brightness / 255.0) * 127), 127))
+            raw_note = int(84 + (f_node.brightness % 12))
+            note = quantize_to_scale(raw_note, 84, 100)
+            
+            flute_track.append(Message('note_on', note=note, velocity=vel, channel=2, time=accumulators[2]))
+            flute_track.append(Message('note_off', note=note, velocity=vel, channel=2, time=tick_16th))
+            accumulators[2] = 0
+        else:
+            accumulators[2] += tick_16th
+            
+        # --- СЛОЙ 2: ПИАНИНО (Каждые 4 шага флейты) ---
+        if step % 4 == 0 and piano_idx < len(layers['medium']):
+            p_node = layers['medium'][piano_idx]
+            if p_node.brightness >= thresholds['piano']:
+                vel = max(20, min(int((p_node.brightness / 255.0) * 127), 127))
+                raw_note = int(60 + (p_node.brightness % 12))
+                note = quantize_to_scale(raw_note, 60, 80)
+                
+                piano_track.append(Message('note_on', note=note, velocity=vel, channel=1, time=accumulators[1]))
+                piano_track.append(Message('note_off', note=note, velocity=vel, channel=1, time=tick_16th * 4))
+                accumulators[1] = 0
+            else:
+                accumulators[1] += tick_16th * 4
+                
+        # --- СЛОЙ 1: БАС (Каждые 16 шагов флейты) ---
+        if step % 16 == 0 and bass_idx < len(layers['large']):
+            b_node = layers['large'][bass_idx]
+            if b_node.brightness >= thresholds['bass']:
+                vel = max(30, min(int((b_node.brightness / 255.0) * 127), 127))
+                raw_note = int(36 + (b_node.brightness % 12))
+                note = quantize_to_scale(raw_note, 36, 55)
+                
+                bass_track.append(Message('note_on', note=note, velocity=vel, channel=0, time=accumulators[0]))
+                bass_track.append(Message('note_off', note=note, velocity=vel, channel=0, time=tick_16th * 16))
+                accumulators[0] = 0
+            else:
+                accumulators[0] += tick_16th * 16
+
+    # Финальное выравнивание треков тишиной
+    for ch, track in enumerate([bass_track, piano_track, flute_track]):
+        if accumulators[ch] > 0:
+            track.append(Message('control_change', control=0, value=0, channel=ch, time=accumulators[ch]))
+            
+    mid.save(output_path)
+    return output_path
+Используйте код с осторожностью.
+
+🎨 Шаг 3. Интеграция генератора звука в main.py
+
+Теперь обновим наш веб-интерфейс в main.py, чтобы при нажатии кнопки «▶ ИГРАТЬ» запускалась сборка реального аудио-файла, и пользователь мог сразу скачать его или прослушать.
+Откройте main.py, найдите блок if start_play: и приведите его к следующему виду:
+python
+# main.py
+# ... (вверху файла добавляем новые импорты) ...
+from core import process_face_to_layers
+from audio.midi_generator import generate_face_midi
+
+# ... (код интерфейса до кнопки ИГРАТЬ остается прежним) ...
+
+    if start_play:
+        st.success(f"🔥 Движок со-творчества запущен! Режим: **{curve_type}**")
+        
+        # 1. Запускаем математический послойный анализ лица через квадродерево
+        with st.spinner("1. Математическое квадродерево строит слои изображения..."):
+            face_layers = process_face_to_layers(resized_gray, curve_type)
+            
+        st.info(f"Структура дерева построена: Бас ({len(face_layers['large'])} зон), Пианино ({len(face_layers['medium'])} зон), Флейта ({len(face_layers['small'])} зон).")
+        
+        # 2. Передаем слои в MIDI-генератор с текущими ползунками порогов яркости
+        with st.spinner("2. Аудио-сервер собирает полифоническую партитуру..."):
+            current_thresholds = {
+                'bass': bass_threshold,
+                'piano': piano_threshold,
+                'flute': flute_threshold
+            }
+            output_midi_file = "face_music.mid"
+            generate_face_midi(face_layers, sound_preset, current_thresholds, output_midi_file)
+            
+        st.balloons()
+        st.success("🎉 Ваш уникальный аудио-портрет успешно сгенерирован!")
+        
+        # 3. Предоставляем файл для скачивания разработчику
+        with open(output_midi_file, "rb") as f:
+            st.download_button(
+                label="📥 Скачать MIDI-файл вашего лица",
+                data=f,
+                file_name=f"{sound_preset.split()[0]}_face_portrait.mid",
+                mime="audio/mid",
+                use_container_width=True
+            )
+Используйте код с осторожностью.
+
+💾 Проверка и первый коммит полифонии
+
+1. Сохраните все три файла (audio/presets.py, audio/midi_generator.py, main.py).
+2. Откройте панель Streamlit, загрузите ваше подготовленное Ч/Б лицо 256x256, выберите пресет (например, Киберпанк) и нажмите «▶ ИГРАТЬ».
+3. Алгоритм за долю секунды построит квадродерево, отсортирует слои по Z-кривой или Гильберту, применит пороги пауз и выдаст кнопку скачивания готового музыкального файла. Вы можете открыть этот .mid файл в любом плеере или секвенсоре и услышать, как звучит лицо!
+Отправим этот огромный шаг вперед в наш Git-репозиторий:
+bash
+git add audio/ main.py
+git commit -m "Feature: Реализована послойная полифоническая генерация MIDI с квантованием нот по ладу и паузами"
+Используйте код с осторожностью.
+Музыкальный движок готов! Переходим к финальному этапу MVP — визуализации обхода дерева на панели разработчика, чтобы в реальном времени видеть, как "рисуется" лицо квадратиками в процессе игры?
+
+Поздравляю с успешной генерацией первой фрактальной музыки лица! Музыкальный фундамент работает, теперь пришло время сделать систему полностью наглядной по канонам ДРАКОН-схем.
+Нам нужно реализовать интерактивную анимацию обхода, чтобы разработчик и пользователь видели, как «звуковой луч» последовательно подсвечивает квадраты макро- и микро-уровней квадродерева, создавая прямую синестетическую связь между глазом и ухом.
+Для этого мы используем встроенный механизм временных контейнеров Streamlit (st.empty()), который позволяет динамически перерисовывать сетку поверх Ч/Б портрета.
+
+🧱 Шаг 1. Модернизация main.py для real-time визуализации
+
+Мы добавим в цикл проигрывания отрисовку цветных рамок поверх нашего Ч/Б лица. Чтобы анимация не была слишком долгой (ведь на уровне флейты у нас 256 микроблоков), мы сделаем визуализацию по шагам басового слоя (Уровень 2, 16 макро-квадратов), но внутри каждого шага будем подсвечивать, какие именно средние и мелкие потомки сейчас активируются.
+Откройте main.py и полностью замените блок обработки кнопки ▶ ИГРАТЬ (после вызова generate_face_midi) на следующий код:
+python
+        # ... (Предыдущий код генерации MIDI остается без изменений) ...
+        generate_face_midi(face_layers, sound_preset, current_thresholds, output_midi_file)
+            
+        st.success("🎉 Партитура собрана! Запуск интерактивной визуализации обхода...")
+        
+        # --- БЛОК ИНТЕРАКТИВНОЙ ВИЗУАЛИЗАЦИИ ---
+        # Создаем контейнер для динамического обновления картинки
+        visual_container = st.empty()
+        status_text = st.empty()
+        playback_progress = st.progress(0)
+        
+        # Для отрисовки рамок переводим Ч/Б лицо обратно в цветной формат RGB
+        base_canvas = cv2.cvtColor(resized_gray, cv2.COLOR_GRAY2RGB)
+        
+        # Будем шагать по басовому слою (16 макро-шагов)
+        total_bass_steps = len(face_layers['large'])
+        
+        for b_idx in range(total_bass_steps):
+            # Копируем базовый холст, чтобы рамки предыдущих шагов стирались
+            frame = base_canvas.copy()
+            
+            # 1. Подсветка текущего БАС-узла (Крупный синий квадрат)
+            b_node = face_layers['large'][b_idx]
+            b_active = b_node.brightness >= bass_threshold
+            b_color = (0, 102, 204) if b_active else (100, 100, 100) # Синий если играет, серый если пауза
+            
+            cv2.rectangle(
+                frame, 
+                (b_node.x, b_node.y), 
+                (b_node.x + b_node.size, b_node.y + b_node.size), 
+                b_color, 
+                2
+            )
+            
+            # 2. Находим и подсвечиваем 4-х МИД-потомков (Пианино) внутри этого басового сектора
+            # Так как дерево отсортировано по фрактальной кривой, они идут группами по 4
+            for p_offset in range(4):
+                p_idx = b_idx * 4 + p_offset
+                if p_idx < len(face_layers['medium']):
+                    p_node = face_layers['medium'][p_idx]
+                    p_active = p_node.brightness >= piano_threshold
+                    if p_active:
+                        # Зеленая рамка для играющего пианино
+                        cv2.rectangle(
+                            frame, 
+                            (p_node.x, p_node.y), 
+                            (p_node.x + p_node.size, p_node.y + p_node.size), 
+                            (0, 204, 102), 
+                            1
+                        )
+                        
+            # 3. Находим и подсвечиваем 16 ТОП-потомков (Флейта, самые мелкие вспышки)
+            for f_offset in range(16):
+                f_idx = b_idx * 16 + f_offset
+                if f_idx < len(face_layers['small']):
+                    f_node = face_layers['small'][f_idx]
+                    f_active = f_node.brightness >= flute_threshold
+                    if f_active:
+                        # Маленькая красная точка-маркер в центре пикселя флейты
+                        center_x = f_node.x + f_node.size // 2
+                        center_y = f_node.y + f_node.size // 2
+                        cv2.circle(frame, (center_x, center_y), 2, (255, 51, 51), -1)
+
+            # Выводим обновленный кадр на панель
+            visual_container.image(frame, width=512, caption=f"Сенсорный луч на фрактальной траектории ({curve_type})")
+            
+            # Обновляем текстовый статус
+            status_text.markdown(
+                f"**Макро-такт {b_idx + 1}/{total_bass_steps}** | "
+                f"Бас: {'🔊 ИГРАЕТ' if b_active else '🔇 ПАУЗА'} (Яркость: {int(b_node.brightness)})"
+            )
+            
+            # Двигаем ползунок прогресса
+            playback_progress.progress((b_idx + 1) / total_bass_steps)
+            
+            # Имитируем темп музыки (скорость воспроизведения такта)
+            time.sleep(0.4)
+            
+        st.balloons()
+        st.success("🎉 Воспроизведение завершено! Музыкальный паспорт лица готов к скачиванию.")
+        
+        # 4. Предоставляем файл для скачивания разработчику
+        with open(output_midi_file, "rb") as f:
+            st.download_button(
+                label="📥 Скачать готовый MIDI-файл вашего лица",
+                data=f,
+                file_name=f"{sound_preset.replace(' ', '_')}_face.mid",
+                mime="audio/mid",
+                width='stretch'
+            )
+Используйте код с осторожностью.
+
+🚀 Испытание визуализации и коммит в Git
+
+1. Сохраните обновленный файл main.py.
+2. Зайдите в браузер. Загрузите ваше Ч/Б лицо размером 256x256.
+3. Попробуйте сначала выбрать Развертку Мортона, настроить пороги и нажать «▶ ИГРАТЬ».
+	• Вы увидите, как синий квадрат обхода прыгает по классической Z-образной траектории: сначала сканируется верхняя левая четверть лица, затем верхняя правая, затем нижняя левая и нижняя правая.
+4. Переключите движок на Кривую Гильберта и запустите снова.
+	• Теперь синий квадрат будет перемещаться абсолютно плавно и непрерывно, обвивая лицо змейкой без резких пространственных разрывов. Зеленые и красные маркеры будут зажигать внутренние паттерны пианино и флейты.
+Это триумф нашей математической логики! Мы получили полноценный интерактивный калибровочный стенд. Зафиксируем этот важнейший шаг в Git:
+bash
+git add main.py
+git commit -m "Feature: Реализована real-time визуализация обхода слоев квадродерева по фрактальным кривым"
+Используйте код с осторожностью.
+
+🎯 Наш текущий статус
+
+Мы полностью собрали работающий MVP (минимально жизнеспособный продукт):
+1. Подготовка и кадрирование матрицы лица.
+2. Построение иерархического квадродерева с расчетом яркости.
+3. Смена стратегий Мортона/Гильберта по ДРАКОН-схеме "на лету".
+4. Полифонический MIDI-генератор с квантованием нот по ладу и умными паузами.
+5. Интерактивная контрольная панель разработчика.
+Что мы будем делать дальше? Мы можем заняться реализацией Кривой Пеано (сетка 3x3), чтобы добавить в проект необычную триольную полиритмию, или начнем прорабатывать архитектуру сохранения индивидуальных пользовательских пресетов инструментов?
