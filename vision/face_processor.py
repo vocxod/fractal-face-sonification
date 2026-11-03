@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+import mediapipe as mp
+
 
 def position_by_eyes(image_bgr, target_size=256):
     """
@@ -80,6 +82,7 @@ def position_by_eyes(image_bgr, target_size=256):
     
     return aligned_face, True
 
+
 def position_by_center(image_bgr, target_size=256):
     """
     Стратегия 2: Простое кадрирование по центру.
@@ -96,6 +99,7 @@ def position_by_center(image_bgr, target_size=256):
     face_square = gray[start_y:start_y+crop_size, start_x:start_x+crop_size]
     return cv2.resize(face_square, (target_size, target_size), interpolation=cv2.INTER_AREA)
 
+
 def get_positioned_face(image_bgr, strategy_name, target_size=256):
     """
     ДРАКОН-переключатель стратегий предварительной подготовки лица.
@@ -107,4 +111,24 @@ def get_positioned_face(image_bgr, strategy_name, target_size=256):
             return position_by_center(image_bgr, target_size), True
         case _:
             return position_by_center(image_bgr, target_size), False
+
+
+def process_and_center_face(image_bgr, target_size=256):
+    """
+    Принимает предварительно подготовленное пользователем изображение,
+    гарантирует перевод в Ч/Б и размер target_size x target_size.
+    """
+    # Если изображение уже одноканальное (серое)
+    if len(image_bgr.shape) == 2:
+        gray = image_bgr
+    else:
+        # Если загружено как цветное, переводим в градации серого
+        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    
+    # Изменяем размер до целевого (256x256), если он отличается
+    if gray.shape[0] != target_size or gray.shape[1] != target_size:
+        gray = cv2.resize(gray, (target_size, target_size), interpolation=cv2.INTER_AREA)
+        
+    return gray, True
+
 
