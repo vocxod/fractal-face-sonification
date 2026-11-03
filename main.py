@@ -189,9 +189,9 @@ if uploaded_file is not None:
             generate_face_wav(face_layers, user_instruments, selected_scale, current_thresholds, output_wav_file)
             
         # ВСТРАИВАЕМ HTML5 АУДИОПЛЕЕР ПРЯМО НА ПАНЕЛЬ
-        st.write("### 🔊 Встроенный плеер аудио-паспорта")
-        with open(output_wav_file, "rb") as audio_file:
-            st.audio(audio_file.read(), format="audio/wav")            
+        # st.write("### 🔊 Встроенный плеер аудио-паспорта")
+        # with open(output_wav_file, "rb") as audio_file:
+        #     st.audio(audio_file.read(), format="audio/wav")            
 
         # Отрисовка анимации (берем холст из сессии)
         visual_container = st.empty()

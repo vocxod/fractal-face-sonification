@@ -1,5 +1,6 @@
 # audio/midi_generator.py
 import mido
+import numpy as np
 from mido import Message, MidiFile, MidiTrack
 from audio.presets import quantize_to_scale
 
