@@ -61,15 +61,16 @@ flute_threshold = st.sidebar.slider("Флейта (Мелкий слой, L4)", 
 col_orig, col_fractal = st.columns(2)
 
 if uploaded_file is not None:
-    # 1. Для JS-кроппера открываем как PIL.Image
+    # 1. Открываем как PIL.Image для JS-кроппера
     img_pil = Image.open(uploaded_file)
     
-    # 2. Для автоматических режимов OpenCV делаем копию в формате numpy ndarray
+    # Копия в формате numpy для автоматических режимов
     image = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
-    # Результирующая ч/б матрица 256x256
-    resized_gray = None
+    # Инициализируем постоянную память сессии для нашей ч/б матрицы, если её еще нет
+    if 'resized_gray' not in st.session_state:
+        st.session_state.resized_gray = None
     
     # --- ШАГ 2: ПОЗИЦИОНИРОВАНИЕ И ЦЕНТРИРОВАНИЕ ЛИЦА ---
     if alignment_strategy == "Ручная JS-калибровка по сетке (Рекомендуется)":
@@ -77,43 +78,68 @@ if uploaded_file is not None:
             st.subheader("🎯 Кадрирование лица")
             st.caption("Выделите лицо квадратом. Масштабируйте его так, чтобы глаза были в верхней трети рамки.")
             
-            # Передаем РIL объект вместо numpy
             cropped_image = st_cropper(
                 img_file=img_pil, 
                 realtime_update=True, 
                 box_color='#FF3333', 
                 aspect_ratio=(1, 1)
-            )            
+            )
+            # Записываем результат работы JS-кроппера напрямую в память сессии!
+            gray_matrix = cv2.cvtColor(np.array(cropped_image), cv2.COLOR_RGB2GRAY)
+            st.session_state.resized_gray = cv2.resize(gray_matrix, (256, 256), interpolation=cv2.INTER_AREA)
+            
+        with col_fractal:
+            st.subheader("🏁 Результат калибровки")
+            st.caption("Визуальные мишени Узлов 0 и 1")
+            
+            preview_img = cv2.cvtColor(st.session_state.resized_gray, cv2.COLOR_GRAY2RGB)
+            for center in [(64, 64), (192, 64)]:
+                # Распаковываем кортеж на отдельные координаты X и Y
+                cx, cy = center
+                
+                # Окружность вокруг центра зрачка
+                cv2.circle(preview_img, (cx, cy), 6, (255, 0, 0), 1)
+                
+                # Горизонтальная линия перекрестия (меняется только координата X)
+                cv2.line(preview_img, (cx - 12, cy), (cx + 12, cy), (255, 0, 0), 1)
+                
+                # Вертикальная линия перекрестия (меняется только координата Y)
+                cv2.line(preview_img, (cx, cy - 12), (cx, cy + 12), (255, 0, 0), 1)
+                
+            st.image(preview_img, width=256)
+
+            
     else:
-        # Автоматический режим (просто берет центр кадра)
+        # Автоматический режим (центр кадра)
         with col_orig:
             st.subheader("🖼️ Оригинал")
             st.image(image_rgb, width='stretch')
             
-        resized_gray, _ = get_positioned_face(image, alignment_strategy, target_size=256)
+        auto_gray, _ = get_positioned_face(image, alignment_strategy, target_size=256)
+        st.session_state.resized_gray = auto_gray
         
         with col_fractal:
             st.subheader("🏁 Фрактальная матрица (Центр кадра)")
-            st.image(resized_gray, width=256, channels="GRAY")
+            st.image(st.session_state.resized_gray, width=256, channels="GRAY")
             
     # --- ПАНЕЛЬ ВОСПРОИЗВЕДЕНИЯ И ЗВУКА ---
     st.write("---")
     st.subheader("🎵 Мониторинг проигрывания")
-    # Стало (добавлено явное количество колонок согласно стандартам Streamlit):
+    
     col_btn1, col_btn2, _ = st.columns(3)
     with col_btn1:
         start_play = st.button("▶ ИГРАТЬ", use_container_width=True)
     with col_btn2:
         stop_play = st.button("❚❚ ПАУЗА", use_container_width=True)
         
-    if start_play and resized_gray is not None:
+    # Проверяем матрицу из ПАМЯТИ СЕССИИ (теперь она никогда не будет None)
+    if start_play and st.session_state.resized_gray is not None:
         st.success(f"🔥 Движок со-творчества запущен! Режим: **{curve_type}**")
         
-        # 1. Построение квадродерева и разделение по слоям
         with st.spinner("1. Математическое квадродерево строит слои изображения..."):
-            face_layers = process_face_to_layers(resized_gray, curve_type)
+            # Передаем матрицу из памяти сессии
+            face_layers = process_face_to_layers(st.session_state.resized_gray, curve_type)
             
-        # 2. Полифоническая генерация MIDI
         with st.spinner("2. Аудио-сервер собирает полифоническую партитуру..."):
             current_thresholds = {
                 'bass': bass_threshold,
@@ -123,12 +149,12 @@ if uploaded_file is not None:
             output_midi_file = "face_music.mid"
             generate_face_midi(face_layers, sound_preset, current_thresholds, output_midi_file)
             
-        # 3. Интерактивная real-time визуализация обхода дерева на экране
+        # Отрисовка анимации (берем холст из сессии)
         visual_container = st.empty()
         status_text = st.empty()
         playback_progress = st.progress(0)
         
-        base_canvas = cv2.cvtColor(resized_gray, cv2.COLOR_GRAY2RGB)
+        base_canvas = cv2.cvtColor(st.session_state.resized_gray, cv2.COLOR_GRAY2RGB)
         total_bass_steps = len(face_layers['large'])
         
         for b_idx in range(total_bass_steps):
