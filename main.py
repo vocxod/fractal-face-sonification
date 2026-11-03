@@ -5,7 +5,7 @@ import time
 
 # Импортируем наш новый шаг обработки лица
 from vision.face_processor import process_and_center_face
-# from core import get_fractal_path
+from vision.face_processor import get_positioned_face  
 from core import process_face_to_layers
 from audio.midi_generator import generate_face_midi
 
@@ -24,6 +24,15 @@ st.sidebar.header("🎛️ Панель управления")
 
 # 1. Загрузка фотографии
 uploaded_file = st.sidebar.file_uploader("1. Загрузите фото лица", type=["jpg", "jpeg", "png"])
+
+# Выбор алгоритма позиционирования и обрезки
+alignment_strategy = st.sidebar.selectbox(
+    "1. Алгоритм позиционирования лица",
+    [
+        "Позиционирование по глазам (Жесткая фрактальная сетка)", 
+        "Простое кадрирование по центру холста"
+    ]
+)
 
 # 2. Выбор математического движка обхода
 curve_type = st.sidebar.selectbox(
@@ -72,14 +81,17 @@ if uploaded_file is not None:
     # resized_gray = cv2.resize(gray, (square_size, square_size), interpolation=cv2.INTER_AREA)
 
     # --- ШАГ 2: ПОЗИЦИОНИРОВАНИЕ И ЦЕНТРИРОВАНИЕ ЛИЦА ---
-    # Передаем картинку в наш процессор. Он вернет идеальный ч/б квадрат square_size x square_size
-    resized_gray, face_found = process_and_center_face(image, target_size=square_size)
-
+    resized_gray, face_found = get_positioned_face(image, alignment_strategy, target_size=256)
     
-    # with col_fractal:
-    #     st.subheader("🏁 Фрактальная матрица (256x256)")
-    #     # Отображаем ч/б квадрат, готовый к сканированию
-    #     st.image(resized_gray, width=square_size, channels="GRAY")
+    with col_fractal:
+        if face_found and alignment_strategy == "Позиционирование по глазам (Жесткая фрактальная сетка)":
+            st.subheader("🎯 Глаза зафиксированы в Узлах 0 и 1")
+        else:
+            st.subheader("🏁 Фрактальная матрица")
+            if not face_found:
+                st.warning("Лицо не распознано, применен стандартный центр.")
+                
+        st.image(resized_gray, width=256, channels="GRAY")
 
     with col_fractal:
         if face_found:
