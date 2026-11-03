@@ -223,3 +223,6 @@ __marimo__/
 *.pyc
 ai-discussion.txt
 woman
+*.png
+*.mid
+*.mp3

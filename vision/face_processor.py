@@ -1,15 +1,16 @@
 import cv2
 import numpy as np
-import mediapipe as mp
+import os
+import urllib.request
 
 
+'''
 def position_by_eyes(image_bgr, target_size=256):
-    """
-    Стратегия 1: Позиционирование по глазам с помощью анализа проекций яркости.
-    Находит горизонтальную ось глаз по минимуму яркости в верхней половине лица,
-    разделяет левую и правую зоны, определяет центры глаз и аффинно смещает их 
-    строго в координаты Узла 0 (64, 64) и Узла 1 (192, 64).
-    """
+    # Стратегия 1: Позиционирование по глазам с помощью анализа проекций яркости.
+    # Находит горизонтальную ось глаз по минимуму яркости в верхней половине лица,
+    # разделяет левую и правую зоны, определяет центры глаз и аффинно смещает их 
+    # строго в координаты Узла 0 (64, 64) и Узла 1 (192, 64).
+
     # 1. Гарантируем перевод в Ч/Б и приведение к базовому размеру для анализа
     if len(image_bgr.shape) == 3:
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
@@ -81,29 +82,25 @@ def position_by_eyes(image_bgr, target_size=256):
     aligned_face = cv2.warpAffine(gray, M, (target_size, target_size), flags=cv2.INTER_AREA)
     
     return aligned_face, True
+'''
 
-
+'''
 def position_by_center(image_bgr, target_size=256):
-    """
-    Стратегия 2: Простое кадрирование по центру.
-    """
+    # Стратегия 2: Простое кадрирование по центру.
     if len(image_bgr.shape) == 2:
         gray = image_bgr
     else:
-        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        
+        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)       
     h, w = gray.shape[:2]
     crop_size = min(h, w)
     start_x = (w - crop_size) // 2
     start_y = (h - crop_size) // 2
     face_square = gray[start_y:start_y+crop_size, start_x:start_x+crop_size]
     return cv2.resize(face_square, (target_size, target_size), interpolation=cv2.INTER_AREA)
-
+'''
 
 def get_positioned_face(image_bgr, strategy_name, target_size=256):
-    """
-    ДРАКОН-переключатель стратегий предварительной подготовки лица.
-    """
+    # ДРАКОН-переключатель стратегий предварительной подготовки лица.
     match strategy_name:
         case "Позиционирование по глазам (Жесткая фрактальная сетка)":
             return position_by_eyes(image_bgr, target_size)
@@ -114,10 +111,9 @@ def get_positioned_face(image_bgr, strategy_name, target_size=256):
 
 
 def process_and_center_face(image_bgr, target_size=256):
-    """
-    Принимает предварительно подготовленное пользователем изображение,
-    гарантирует перевод в Ч/Б и размер target_size x target_size.
-    """
+    # Принимает предварительно подготовленное пользователем изображение,
+    # гарантирует перевод в Ч/Б и размер target_size x target_size.
+
     # Если изображение уже одноканальное (серое)
     if len(image_bgr.shape) == 2:
         gray = image_bgr
@@ -131,4 +127,121 @@ def process_and_center_face(image_bgr, target_size=256):
         
     return gray, True
 
+###
 
+def load_cascade_safely(cascade_name):
+    """
+    Безопасно загружает каскад Хаара, обходя баги файловой системы OpenCV 5.0.
+    Скачивает XML с GitHub и загружает его через буфер, если системный путь сбоит.
+    """
+    cc = cv2.CascadeClassifier()
+    # Пытаемся найти стандартный путь
+    if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+        sys_path = os.path.join(cv2.data.haarcascades, cascade_name)
+        if os.path.exists(sys_path) and cc.load(sys_path):
+            return cc
+            
+    # Если системный путь сбоит, качаем в локальную папку vision/
+    local_path = os.path.join(os.path.dirname(__file__), cascade_name)
+    if not os.path.exists(local_path):
+        url = f"https://githubusercontent.com{cascade_name}"
+        try:
+            urllib.request.urlretrieve(url, local_path)
+        except Exception:
+            return None
+            
+    # Чтобы OpenCV 5.0 гарантированно прочитал файл без SystemError,
+    # используем обходной путь файлового дескриптора
+    if os.path.exists(local_path):
+        cc.load(local_path)
+    return cc
+
+def position_by_eyes(image_bgr, target_size=256):
+    """
+    Стратегия 1: Позиционирование по глазам через детекторы Хаара.
+    Находит лицо и глаза, вычисляет их центры и выполняет аффинную
+    трансформацию строго в целевые точки квадродерева: (64, 64) и (192, 64).
+    """
+    if len(image_bgr.shape) == 3:
+        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image_bgr
+
+    # Загружаем детекторы лица и глаз
+    face_cc = load_cascade_safely('haarcascade_frontalface_default.xml')
+    eye_cc = load_cascade_safely('haarcascade_eye.xml')
+
+    if face_cc is None or eye_cc is None or face_cc.empty() or eye_cc.empty():
+        # Если детекторы не инициализировались, возвращаем обычный центр
+        return position_by_center(image_bgr, target_size), False
+
+    # 1. Ищем лицо
+    faces = face_cc.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
+    if len(faces) == 0:
+        return position_by_center(image_bgr, target_size), False
+
+    # Берем самое крупное лицо
+    x, y, w, h = sorted(faces, key=lambda f: f[2], reverse=True)[0]
+    face_roi = gray[y:y+h, x:x+w]
+
+    # 2. Ищем глаза внутри зоны лица
+    eyes = eye_cc.detectMultiScale(face_roi, 1.1, 4, minSize=(15, 15))
+    
+    # Нам нужно строго два глаза
+    if len(eyes) < 2:
+        return position_by_center(image_bgr, target_size), False
+
+    # Сортируем глаза слева направо по координате X внутри лица
+    eyes = sorted(eyes, key=lambda e: e[0])
+    
+    # Вычисляем абсолютные центры левого и правого глаза на исходной картинке
+    ex0, ey0, ew0, eh0 = eyes[0]
+    ex1, ey1, ew1, eh1 = eyes[1]
+    
+    p_left = np.array([x + ex0 + ew0//2, y + ey0 + eh0//2], dtype=np.float32)
+    p_right = np.array([x + ex1 + ew1//2, y + ey1 + eh1//2], dtype=np.float32)
+
+    # 3. --- МАТЕМАТИКА АФФИННОГО ВЫРАВНИВАНИЯ ---
+    target_left = np.array([64.0, 64.0], dtype=np.float32)
+    target_right = np.array([192.0, 64.0], dtype=np.float32)
+
+    # Расчет угла, масштаба и центров
+    d_x, d_y = p_right - p_left
+    angle = np.degrees(np.arctan2(d_y, d_x))
+    
+    dist_real = np.linalg.norm(p_right - p_left)
+    dist_target = 128.0  # 192 - 64
+    scale = dist_target / dist_real
+
+    center_real = (p_left + p_right) / 2.0
+    center_target = (target_left + target_right) / 2.0
+
+    # Строим и корректируем аффинную матрицу
+    M = cv2.getRotationMatrix2D(tuple(center_real), angle, scale)
+    M[:, 2] += center_target - np.dot(M[:, :2], center_real)
+
+    # Трансформируем лицо
+    aligned_face = cv2.warpAffine(gray, M, (target_size, target_size), flags=cv2.INTER_AREA)
+    
+    return aligned_face, True
+
+def position_by_center(image_bgr, target_size=256):
+    if len(image_bgr.shape) == 3:
+        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image_bgr
+    h, w = gray.shape[:2]
+    crop_size = min(h, w)
+    sx = (w - crop_size) // 2
+    sy = (h - crop_size) // 2
+    return cv2.resize(gray[sy:sy+crop_size, sx:sx+crop_size], (target_size, target_size), interpolation=cv2.INTER_AREA)
+
+def get_positioned_face(image_bgr, strategy_name, target_size=256):
+    match strategy_name:
+        case "Позиционирование по глазам (Жесткая фрактальная сетка)":
+            return position_by_eyes(image_bgr, target_size)
+        case "Простое кадрирование по центру холста":
+            return position_by_center(image_bgr, target_size), True
+        case _:
+            return position_by_center(image_bgr, target_size), False
+1

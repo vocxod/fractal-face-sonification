@@ -81,17 +81,31 @@ if uploaded_file is not None:
     # resized_gray = cv2.resize(gray, (square_size, square_size), interpolation=cv2.INTER_AREA)
 
     # --- ШАГ 2: ПОЗИЦИОНИРОВАНИЕ И ЦЕНТРИРОВАНИЕ ЛИЦА ---
+    from vision.face_processor import get_positioned_face
+    
     resized_gray, face_found = get_positioned_face(image, alignment_strategy, target_size=256)
     
     with col_fractal:
         if face_found and alignment_strategy == "Позиционирование по глазам (Жесткая фрактальная сетка)":
-            st.subheader("🎯 Глаза зафиксированы в Узлах 0 и 1")
+            st.subheader("🎯 Сетка: Глаза в Узлах 0 и 1")
+            
+            # Создаем цветную копию для калибровочных маркеров
+            preview_img = cv2.cvtColor(resized_gray, cv2.COLOR_GRAY2RGB)
+            
+            # Рисуем яркие красные мишени в точках (64,64) и (192,64)
+            for center in [(64, 64), (192, 64)]:
+                # Окружность вокруг центра зрачка
+                cv2.circle(preview_img, center, 6, (255, 0, 0), 1)
+                # Перекрестие
+                cv2.line(preview_img, (center[0]-12, center[1]), (center[0]+12, center[1]), (255, 0, 0), 1)
+                cv2.line(preview_img, (center[0], center[1]-12), (center[0], center[1]+12), (255, 0, 0), 1)
+                
+            st.image(preview_img, width=256)
         else:
             st.subheader("🏁 Фрактальная матрица")
             if not face_found:
-                st.warning("Лицо не распознано, применен стандартный центр.")
-                
-        st.image(resized_gray, width=256, channels="GRAY")
+                st.warning("⚠️ Лицо/глаза не распознаны. Применен автоматический центр кадра.")
+            st.image(resized_gray, width=256, channels="GRAY")
 
     with col_fractal:
         if face_found:
