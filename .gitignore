@@ -234,3 +234,4 @@ sf
 *.midi
 *.mp4
 main_before_*.py
+*.csv
