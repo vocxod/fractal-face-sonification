@@ -4,6 +4,29 @@ import os
 import urllib.request
 
 
+def apply_shift(matrix: np.ndarray, shift_percent_x: float, shift_percent_y: float) -> np.ndarray:
+    """ Сдвигает ч/б матрицу на заданный процент от её размера """
+    h, w = matrix.shape[:2]
+    shift_x = int(w * (shift_percent_x / 100.0))
+    shift_y = int(h * (shift_percent_y / 100.0))
+    
+    # Матрица аффинного сдвига
+    T = np.float32([[1, 0, shift_x], [0, 1, shift_y]])
+    # Сдвигаем, заполняя пустоты черным цветом (0)
+    return cv2.warpAffine(matrix, T, (w, h), borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+def apply_zoom(matrix: np.ndarray, zoom_percent: float) -> np.ndarray:
+    """ Масштабирует матрицу относительно её центра на заданный процент """
+    h, w = matrix.shape[:2]
+    # Коэффициент масштабирования: 1.0 — без изменений, 1.05 — увеличение на 5%
+    scale = 1.0 + (zoom_percent / 100.0)
+    
+    center = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D(center, angle=0, scale=scale)
+    return cv2.warpAffine(matrix, M, (w, h), borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+
+
 '''
 def position_by_eyes(image_bgr, target_size=256):
     # Стратегия 1: Позиционирование по глазам с помощью анализа проекций яркости.
@@ -244,4 +267,5 @@ def get_positioned_face(image_bgr, strategy_name, target_size=256):
             return position_by_center(image_bgr, target_size), True
         case _:
             return position_by_center(image_bgr, target_size), False
-1
+
+
