@@ -1,0 +1,25 @@
+{
+    "name": "Streamlit Dev Environment",
+    "dockerComposeFile": "docker-compose.dev.yml",
+    "service": "streamlit-dev",
+    "workspaceFolder": "/home/testman",
+    "remoteUser": "testman", // Заходим внутрь контейнера от безопасного пользователя
+    
+    // Автоматическая настройка расширений внутри контейнера
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",       // Поддержка Python
+                "ms-python.vscode-pylance", // Умное автодополнение
+                "ms-python.debugpy"        // Отладчик
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.analysis.typeCheckingMode": "basic"
+            }
+        }
+    },
+    
+    // Открываем порт Streamlit для локального браузера
+    "forwardPorts": [8501]
+}

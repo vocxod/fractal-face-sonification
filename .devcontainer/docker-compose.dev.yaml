@@ -1,0 +1,28 @@
+services:
+  streamlit-app:
+    build:
+      context: ..
+      args:
+        # Передаем ID из вашей хост-системы на этап сборки
+        - USER_ID=${UID:-1000}
+        - GROUP_ID=${GID:-1000}
+    container_name: streamlit-dev
+    volumes:
+      -..:/home/testman:cached
+    ports:
+      8501:8501
+    environment:
+      - VIRTUAL_HOST=nxitv.ru,www.nxitv.ru
+      - LETSENCRYPT_HOST=nxitv.ru,www.nxitv.ru
+      - VIRTUAL_PORT=8501
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    networks:
+      - proxy-network
+    restart: unless-stopped
+
+networks:
+  proxy-network:
+    external: true
+
+
+
