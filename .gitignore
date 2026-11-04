@@ -235,3 +235,4 @@ sf
 *.mp4
 main_before_*.py
 *.csv
+*_old

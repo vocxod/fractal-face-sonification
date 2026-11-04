@@ -2,7 +2,7 @@ FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# 1. Устанавливаем базовые утилиты, включая сертификаты безопасности
+# 1. Устанавливаем базовые утилиты и репозиторий deadsnakes
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     gpg-agent \
@@ -12,22 +12,22 @@ RUN apt-get update && apt-get install -y \
     && apt-get update && apt-get install -y \
     python3.11 \
     python3.11-dev \
-    python3-pip \
+    python3.11-distutils \
     ffmpeg \
     libsm6 \
     libxext6 \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Настраиваем альтернативы, чтобы python3 и pip указывали строго на версию 3.11
+# 2. Настраиваем альтернативы для python3 и устанавливаем актуальный pip
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
-    && curl -sS https://pypa.io | python3.11
+    && curl -sS https://pypa.io | python3
 
 WORKDIR /workspace
 
-# 3. Копируем файл зависимостей и ставим их глобально внутри контейнера
+# 3. Копируем файл зависимостей и ставим их
 COPY requirements.txt .
-RUN python3 -m pip install --upgrade pip && \
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir -r requirements.txt
 
 # 4. Копируем остальные файлы проекта
