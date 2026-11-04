@@ -1,0 +1,22 @@
+services:
+  streamlit_app:
+    build: .
+    container_name: my_streamlit_app
+    restart: always
+    environment:
+      # Укажите ваш домен (например, nxitv.ru или app.odybo.ru)
+      - VIRTUAL_HOST=nxitv.ru
+      # Указываем внутренний порт контейнера, на котором слушает Streamlit
+      - VIRTUAL_PORT=8501
+      # Переменные для автоматического выпуска SSL-сертификата от Let's Encrypt
+      - LETSENCRYPT_HOST=nxitv.ru
+      - LETSENCRYPT_EMAIL=scanner85@gmail.com
+      
+      # КРИТИЧНО ДЛЯ STREAMLIT: заставляет nginx-proxy правильно проксировать WebSocket (Upgrade/Connection)
+      - WEBSOCKET_SUPPORT=true
+    networks:
+      - proxy-network
+
+networks:
+  proxy-network:
+    external: true
