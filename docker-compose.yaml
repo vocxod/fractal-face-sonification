@@ -1,0 +1,17 @@
+services:
+  fractal-workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fractal_sonic_env
+    ports:
+      - "8501:8501"  # Интерфейс Streamlit (Панель опытов)
+      - "8000:8000"  # Наше будущее FastAPI
+    volumes:
+      # Пробрасываем текущую папку с кодом внутрь контейнера для Live-Reload разработки
+      - .:/home/developer/app
+      # Изолируем папку виртуального окружения внутри контейнера, чтобы не ломать пути на хосте
+      - /home/developer/app/.venv
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

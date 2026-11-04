@@ -12,9 +12,9 @@ from audio.midi_generator import generate_face_midi
 # Библиотека для интерактивного JS-кроппинга на Canvas (под капотом Cropper.js)
 from streamlit_cropper import st_cropper
 
-# --- НАСТРОЙКА СТРАНИЦЫ ---
+# --- Н А С Т Р О Й К А   С Т Р А Н И Ц Ы  ---
 st.set_page_config(
-    page_title="Фрактальный аудио-портрет",
+    page_title="Фрактальные аудио картины",
     page_icon="🎹",
     layout="wide"
 )

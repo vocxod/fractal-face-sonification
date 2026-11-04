@@ -20,14 +20,13 @@ The technology is engineered for:
 
 2.1. Hierarchical Quadtree Decomposition
 
-The input image matrix I is normalized into a strict square format of \(2^n \times 2^n\) pixels (base standard: 256 × 256). The algorithm constructs a complete quadtree, where each parent node recursively splits into four children (quadrants):
-1. North-West (NW)
-2. North-East (NE)
-3. South-West (SW)
-4. South-Right (SE)
-For each node of the tree, the invariant mean brightness of the local Region of Interest (ROI) is calculated:
-\(B_{node}=\frac{1}{S}\sum _{i,j\in ROI}I(i,j)\)
-where S is the area of the sub-matrix in pixels.
+### 2.1. Scalable Hierarchical Space Decomposition
+The core sonification framework is fully invariant to the resolution, aspect ratio, and scale of the input image matrix I. The application of a strict square matrix of size 2^n x 2^n (such as 256 × 256) is utilized purely as an illustrative benchmark to demonstrate the baseline execution of the principle. 
+
+In the generalized model, the algorithm dynamically maps any arbitrary two-dimensional grid into a multi-layered hierarchical tree, computing the invariant mean brightness within each bounded local region (Region of Interest - ROI):
+$$B_{node} = \frac{1}{S} \sum_{i,j \in ROI} I(i,j)$$
+where S is the calculated area of the sub-matrix domain in pixels. The spatial boundaries adapt fluidly to non-square layouts, expanding the protective scope of this prior art to any discrete spatial-to-temporal transformation.
+
 
 2.2. Multi-Layered Orchestral Mapping
 
@@ -92,18 +91,15 @@ is legally invalid, and any such granted patents can be overturned in court base
 2. Математическая модель ядра
 
 
-2.1. Иерархическое квадродерево (Quadtree)
+### 2.1. Масштабируемое иерархическое пространственное разложение
+Описываемый метод сонификации полностью инвариантен к разрешению, соотношению сторон и масштабу входной матрицы изображения I. Применение строгого квадратного формата размера 2^n x 2^n (в частности, 256 × 256 пикселей) используется исключительно в качестве наглядного примера для демонстрации базовой работы принципа. 
 
-Входная матрица изображения I нормируется до строгого квадратного формата \(2^n \times 2^n\) пикселей (базовый стандарт — 256 × 256). Алгоритм строит полное квадродерево, где каждый родительский узел рекурсивно делится на четыре потомка (квадранта):
-1. Верхний левый (NW)
-2. Верхний правый (NE)
-3. Нижний левый (SW)
-4. Нижний правый (SE)
-Для каждого узла дерева рассчитывается инвариантная средняя яркость локальной области (ROI):
-\(B_{node}=\frac{1}{S}\sum _{i,j\in ROI}I(i,j)\)
-где S — площадь суб-матрицы в пикселях.
+В общем виде алгоритм динамически проецирует любую произвольную двумерную сетку в многоуровневое иерархическое дерево, вычисляя среднюю яркость внутри каждой ограниченной локальной области (ROI):
+$$B_{node} = \frac{1}{S} \sum_{i,j \in ROI} I(i,j)$$
+где S — площадь подматрицы в пикселях. Пространственные границы адаптивно подстраиваются под любые неквадратные структуры данных.
 
-2.2. Послойное оркестровое картирование
+
+### 2.2. Послойное оркестровое картирование
 
 В отличие от линейных методов растрового сканирования, данная технология применяет принцип структурной вложенности слоев во времени, сопоставляя уровни глубины квадродерева с музыкальными регистрами:
 • Уровень вложенности 2 (4 × 4 = 16 узлов): Слой БАСА (Макро-такты / Целые длительности).

@@ -227,3 +227,9 @@ woman
 *.mid
 *.mp3
 *.txt
+sf
+*.wav
+*.mp3
+*.mid
+*.midi
+*.mp4

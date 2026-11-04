@@ -1,40 +1,39 @@
-FROM python:3.11-slim
+FROM ubuntu:22.04
 
+ARG DEBIAN_FRONTEND=noninteractive
+
+# 1. Устанавливаем базовые утилиты, включая сертификаты безопасности
 RUN apt-get update && apt-get install -y \
-    build-essential \
+    software-properties-common \
+    gpg-agent \
+    ca-certificates \
     curl \
-    libxcb1 \
-    libx11-6 \
-    libxext6 \
-    libxrender1 \
-    libgl1 \
-    libglib2.0-0 \
-    fluidsynth \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
     ffmpeg \
-    soundfont-fluid \
-    && rm -rf /var/lib/apt/lists/
+    libsm6 \
+    libxext6 \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# Объявляем аргументы сборки (по умолчанию 1000, если не переданы)
-ARG USER_ID=1000
-ARG GROUP_ID=1000
+# 2. Настраиваем альтернативы, чтобы python3 и pip указывали строго на версию 3.11
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && curl -sS https://pypa.io | python3.11
 
-# Создаем группу и пользователя с ТОЧНЫМИ ID вашего хоста
-RUN groupadd -g ${GROUP_ID} testman && \
-    useradd -l -u ${USER_ID} -g testman -m -s /bin/bash testman
+WORKDIR /workspace
 
-WORKDIR /home/testman
-
+# 3. Копируем файл зависимостей и ставим их глобально внутри контейнера
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install --no-cache-dir -r requirements.txt
 
+# 4. Копируем остальные файлы проекта
 COPY . .
 
-RUN chown -R testman:testman /home/testman
-
-USER testman
-
 EXPOSE 8501
+EXPOSE 8000
 
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
-
-
+CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]

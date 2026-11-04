@@ -16,10 +16,14 @@ This project operates at the intersection of Computer Vision, Advanced Fractal M
 
 The algorithm decomposes a flat two-dimensional image into hierarchical layers and translates graphical space into time using the following structural principles:
 
-1. Scalable Quadtree Decomposition
 
-The input graphical matrix is normalized to a strict square format of \(2^n \times 2^n\) pixels (base standard: 256 × 256). The algorithm constructs a complete quadtree, calculating the invariant mean brightness within each node.
+### 1. Scalable Quadtree Decomposition
+The input graphical matrix can have any arbitrary resolution and dimensions. The application of a fixed 256 x 256 square grid ($2^n \times 2^n$) in our current test bench is utilized strictly for clarity, simplicity, and ease of architectural demonstration.
+
+In production environments, the engine fluidly maps any resolution (including non-square layouts) into an N-layered hierarchical tree...
+
 The depth of the quadtree and the number of layers chosen to construct the musical composition can be completely arbitrary (N layers), scales fluidly, and maps directly to custom polyphonic audio tracks.
+
 As a primary base configuration, a 3-layer setup (Levels 2, 3, and 4) is utilized to demonstrate a standard three-register orchestra:
 • 🎚️ Quadtree Level 2 (4x4 grid, 16 nodes - Example Configuration): BASS Layer (Macro-measures / Whole notes). Represents major geometric shapes and the foundational landscape of the image.
 • 🎹 Quadtree Level 3 (8x8 grid, 64 nodes - Example Configuration): MID Layer / Piano / Gusli (Quarter notes). Outlines medium contours, primary textures, and shadows.
